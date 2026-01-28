@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thomas-utils"
+version = "0.1.0"
+description = "PDF to Markdown converter — fast (PyMuPDF4LLM) or high-fidelity (marker-pdf)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "pymupdf4llm>=0.0.20",
+]
+
+[project.optional-dependencies]
+marker = ["marker-pdf>=1.0"]
+test = ["pytest>=7", "pymupdf>=1.24"]
+
+[project.scripts]
+thomas-utils = "thomas_utils.cli:main"
+
+[project.urls]
+Repository = "https://github.com/asakh/thomas_utils"
+
+[tool.setuptools.packages.find]
+include = ["thomas_utils*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
