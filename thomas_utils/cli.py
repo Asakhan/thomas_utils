@@ -1,4 +1,4 @@
-"""CLI for thomas_utils: PDF -> Markdown."""
+"""CLI for thomas_utils: PDF and PowerPoint -> Markdown."""
 
 import argparse
 import sys
@@ -55,10 +55,47 @@ def _pdf2md(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pptx2md(args: argparse.Namespace) -> int:
+    from thomas_utils.converters import convert_pptx
+
+    pptx = Path(args.input)
+    if not pptx.exists():
+        print(f"Error: file not found: {pptx}", file=sys.stderr)
+        return 1
+    if not pptx.suffix.lower() == ".pptx":
+        print(f"Error: expected .pptx file, got: {pptx}", file=sys.stderr)
+        return 1
+
+    # 마크다운은 항상 output/ 폴더에 저장
+    out_path = Path("output") / (Path(args.output).name if args.output else (pptx.stem + ".md"))
+
+    try:
+        md = convert_pptx(
+            str(pptx),
+            use_llm=getattr(args, "pptx_use_llm", False),
+            engine=getattr(args, "pptx_engine", "python-pptx"),
+            use_llm_multimodal=getattr(args, "pptx_use_llm_multimodal", False),
+        )
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(md, encoding="utf-8")
+    print(f"Wrote {out_path}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="thomas-utils",
-        description="PDF to Markdown — fast (pymupdf) or high-fidelity (marker).",
+        description="PDF and PowerPoint to Markdown — fast (pymupdf) or high-fidelity (marker).",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -77,6 +114,33 @@ def main() -> None:
         help="Conversion engine (default: pymupdf)",
     )
     pdf2md_p.set_defaults(_run=_pdf2md)
+
+    pptx2md_p = subparsers.add_parser("pptx2md", help="Convert PowerPoint to Markdown")
+    pptx2md_p.add_argument("input", metavar="INPUT.pptx", help="Input PPTX path")
+    pptx2md_p.add_argument("-o", "--output", metavar="OUTPUT.md", help="Output Markdown path (default: output/INPUT.md)")
+    pptx2md_p.add_argument(
+        "--slides",
+        metavar="LIST",
+        help="0-based slide indices (currently ignored, all slides are converted)",
+    )
+    pptx2md_p.add_argument(
+        "--pptx-use-llm",
+        action="store_true",
+        help="Use LLM to polish extracted markdown (requires pptx-llm extra)",
+    )
+    pptx2md_p.add_argument(
+        "--engine",
+        choices=("python-pptx", "unstructured"),
+        default="python-pptx",
+        dest="pptx_engine",
+        help="PPTX conversion engine (default: python-pptx)",
+    )
+    pptx2md_p.add_argument(
+        "--pptx-use-llm-multimodal",
+        action="store_true",
+        help="Render each slide to image and convert via vision LLM (GPT-4o); needs pywin32 (Windows) or LibreOffice + pymupdf",
+    )
+    pptx2md_p.set_defaults(_run=_pptx2md)
 
     args = parser.parse_args()
     run = getattr(args, "_run", None)

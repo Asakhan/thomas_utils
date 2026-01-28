@@ -5,16 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "thomas-utils"
 version = "0.1.0"
-description = "PDF to Markdown converter — fast (PyMuPDF4LLM) or high-fidelity (marker-pdf)"
+description = "PDF and PowerPoint to Markdown converter — fast (PyMuPDF4LLM) or high-fidelity (marker-pdf)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "pymupdf4llm>=0.0.20",
+    "python-pptx>=1.0.0",
 ]
 
 [project.optional-dependencies]
 marker = ["marker-pdf>=1.0"]
+pptx-llm = ["openai>=1.0"]
+pptx-math = ["officemath2latex>=0.1"]
+pptx-multimodal = ["openai>=1.0", "python-dotenv>=1.0", "pywin32>=306; sys_platform=='win32'", "pymupdf>=1.24"]
+unstructured = ["unstructured[pptx]>=0.10"]
 test = ["pytest>=7", "pymupdf>=1.24"]
 
 [project.scripts]
