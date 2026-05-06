@@ -136,10 +136,62 @@ python -m thomas_utils.video_summary --input INPUT.mp4 --output OUTPUT.md
 | `--screenshots-dir` | 키프레임 이미지 저장 디렉터리 | `<OUTPUT>_assets/` |
 | `--title` | 출력 강의 제목 강제 지정 | 영상 파일명 |
 
-**필수 환경**:
-- 시스템에 `ffmpeg` 바이너리가 PATH에 설치되어 있어야 합니다 (`apt install ffmpeg` / `brew install ffmpeg`).
-- `.env`에 `ANTHROPIC_API_KEY`(Claude 사용 시) 또는 `OPENAI_API_KEY`(GPT-4o 사용 시)가 필요합니다.
-- `pip install "thomas-utils[video-summary]"`로 `opencv-python`, `faster-whisper`, `anthropic` 등이 설치됩니다.
+#### 동영상 변환 실행 전 셋팅 체크리스트
+
+`video2md`를 실행하기 전에 아래 항목을 순서대로 점검하세요.
+
+**1. 시스템 의존성 (필수)**
+
+- `ffmpeg` 바이너리가 PATH에 설치되어 있어야 합니다.
+  - Linux: `apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
+  - Windows: 공식 빌드 설치 후 PATH 등록
+- 확인: `ffmpeg -version`
+
+**2. Python 패키지 설치 (필수)**
+
+```bash
+pip install "thomas-utils[video-summary]"
+# 로컬 개발 시
+pip install -e ".[video-summary]"
+```
+→ `opencv-python`, `faster-whisper`, `anthropic`/`openai` 등이 함께 설치됩니다.
+
+**3. API 키 — `.env` 파일 (필수, provider에 따라 택1)**
+
+프로젝트 루트의 `.env`에 사용할 provider에 맞는 키를 설정합니다.
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...   # --provider anthropic (기본값) 사용 시
+OPENAI_API_KEY=sk-...          # --provider openai 사용 시
+```
+
+**4. 실행 시 결정해야 할 옵션**
+
+| 항목 | 결정 포인트 |
+|------|------------|
+| `--provider` | `anthropic`(Claude, 기본) / `openai`(GPT-4o) — 위 API 키와 일치해야 함 |
+| `--whisper-model` | `tiny`/`base`/`small`/`medium`/`large-v3` — 한국어 강의는 `small` 이상 권장 |
+| `--language` | 강의 언어 미리 지정(예: `ko`)하면 STT 정확도↑ |
+| `--scene-threshold` | 기본 `0.55`. 슬라이드가 자주 바뀌면 ↑, 적게 잡히면 ↓ |
+| `--min-gap-seconds` | 기본 `8.0`. 너무 잘게 잘리면 ↑ |
+| `--max-scenes` | 기본 `40`. **API 비용 상한** — 긴 영상에서 반드시 점검 |
+| `--api-timeout` / `--audio-timeout` | 긴 영상이면 충분히 키워두기 |
+| `--screenshots-dir` | 기본 `<OUTPUT>_assets/` — 별도 보관 위치 원할 때만 |
+| `--title` | 파일명이 아닌 별도 제목으로 출력하려면 지정 |
+
+**5. 디스크/리소스 점검**
+
+- 출력은 `output/` 폴더로 저장되며 **키프레임 이미지**가 `<OUTPUT>_assets/`에 함께 쌓입니다 — 충분한 디스크 여유 확인.
+- Whisper `medium`/`large-v3`는 메모리·시간 비용이 크므로 GPU 또는 충분한 RAM 권장.
+
+**빠른 사전 점검 명령**
+
+```bash
+ffmpeg -version
+python -c "import faster_whisper, cv2, anthropic; print('ok')"
+grep -E 'ANTHROPIC_API_KEY|OPENAI_API_KEY' .env
+```
 
 **출력 구조**: 강의 제목·메타정보 → **목차**(타임스탬프 점프) → 섹션별(스크린샷 + 핵심 포인트 + 요약 + 해당 구간 스크립트) → **전체 스크립트**(타임스탬프 포함). 키프레임 이미지는 `<OUTPUT>_assets/` 폴더에 저장되고 마크다운에서 상대 경로로 참조됩니다.
 
