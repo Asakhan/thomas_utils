@@ -23,8 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--provider",
         choices=("anthropic", "openai"),
-        default="anthropic",
-        help="Multimodal LLM provider (default: anthropic)",
+        default="openai",
+        help="Multimodal LLM provider (default: openai)",
     )
     p.add_argument("--model", help="Override LLM model name")
     p.add_argument(

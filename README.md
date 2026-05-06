@@ -124,7 +124,7 @@ python -m thomas_utils.video_summary --input INPUT.mp4 --output OUTPUT.md
 |------|------|--------|
 | `--input`, `-i` | 변환할 영상 경로 | (필수) |
 | `--output`, `-o` | 출력 Markdown 경로 | `output/INPUT.md` |
-| `--provider` | `anthropic`(Claude) 또는 `openai`(GPT-4o) | `anthropic` |
+| `--provider` | `anthropic`(Claude) 또는 `openai`(GPT-4o) | `openai` |
 | `--model` | 모델 이름 강제 지정 | provider 기본값 |
 | `--whisper-model` | `tiny` / `base` / `small` / `medium` / `large-v3` | `base` |
 | `--language` | STT 언어 코드 (예: `ko`, `en`) | 자동 감지 |
@@ -162,15 +162,15 @@ pip install -e ".[video-summary]"
 프로젝트 루트의 `.env`에 사용할 provider에 맞는 키를 설정합니다.
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...   # --provider anthropic (기본값) 사용 시
-OPENAI_API_KEY=sk-...          # --provider openai 사용 시
+OPENAI_API_KEY=sk-...          # --provider openai (기본값) 사용 시
+ANTHROPIC_API_KEY=sk-ant-...   # --provider anthropic 사용 시
 ```
 
 **4. 실행 시 결정해야 할 옵션**
 
 | 항목 | 결정 포인트 |
 |------|------------|
-| `--provider` | `anthropic`(Claude, 기본) / `openai`(GPT-4o) — 위 API 키와 일치해야 함 |
+| `--provider` | `openai`(GPT-4o, 기본) / `anthropic`(Claude) — 위 API 키와 일치해야 함 |
 | `--whisper-model` | `tiny`/`base`/`small`/`medium`/`large-v3` — 한국어 강의는 `small` 이상 권장 |
 | `--language` | 강의 언어 미리 지정(예: `ko`)하면 STT 정확도↑ |
 | `--scene-threshold` | 기본 `0.55`. 슬라이드가 자주 바뀌면 ↑, 적게 잡히면 ↓ |
@@ -189,7 +189,7 @@ OPENAI_API_KEY=sk-...          # --provider openai 사용 시
 
 ```bash
 ffmpeg -version
-python -c "import faster_whisper, cv2, anthropic; print('ok')"
+python -c "import faster_whisper, cv2, openai; print('ok')"
 grep -E 'ANTHROPIC_API_KEY|OPENAI_API_KEY' .env
 ```
 
@@ -254,14 +254,14 @@ from thomas_utils.video_summary import convert_video
 out_path = convert_video(
     video_path="lecture.mp4",
     output_path="output/lecture.md",
-    provider="anthropic",          # 또는 "openai"
+    provider="openai",             # 또는 "anthropic"
     whisper_model="base",
     scene_threshold=0.55,
     max_scenes=40,
 )
 ```
 
-- `convert_video(video_path, output_path, *, provider="anthropic", model=None, whisper_model="base", language=None, scene_threshold=0.55, min_gap_seconds=8.0, max_scenes=40, api_timeout=120, audio_timeout=1800, screenshots_dir=None, title=None) -> Path`
+- `convert_video(video_path, output_path, *, provider="openai", model=None, whisper_model="base", language=None, scene_threshold=0.55, min_gap_seconds=8.0, max_scenes=40, api_timeout=120, audio_timeout=1800, screenshots_dir=None, title=None) -> Path`
 - 반환값: 실제로 작성된 Markdown 파일의 경로.
 - 키프레임 이미지는 `<OUTPUT>_assets/` 또는 `screenshots_dir`에 저장됩니다.
 

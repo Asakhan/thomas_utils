@@ -181,8 +181,8 @@ def main() -> None:
     video2md_p.add_argument("input", metavar="INPUT.mp4", help="Input video path")
     video2md_p.add_argument("-o", "--output", metavar="OUTPUT.md",
                             help="Output Markdown path (default: output/INPUT.md)")
-    video2md_p.add_argument("--provider", choices=("anthropic", "openai"), default="anthropic",
-                            help="Multimodal LLM provider (default: anthropic)")
+    video2md_p.add_argument("--provider", choices=("anthropic", "openai"), default="openai",
+                            help="Multimodal LLM provider (default: openai)")
     video2md_p.add_argument("--model", help="Override LLM model name")
     video2md_p.add_argument("--whisper-model", default="base",
                             help="Whisper model size (default: base)")

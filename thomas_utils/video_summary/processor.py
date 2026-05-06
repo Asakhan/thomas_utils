@@ -334,7 +334,7 @@ def convert_video(
     video_path: str | Path,
     output_path: str | Path,
     *,
-    provider: str = "anthropic",
+    provider: str = "openai",
     model: Optional[str] = None,
     whisper_model: str = "base",
     language: Optional[str] = None,
