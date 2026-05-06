@@ -1,9 +1,10 @@
 # thomas_utils
 
-PDF와 PowerPoint를 내용 손실을 최소화하면서 Markdown으로 변환하는 도구입니다.
+PDF, PowerPoint, 그리고 강의 영상을 내용 손실을 최소화하면서 Markdown으로 변환하는 도구입니다.
 
 - **PDF**: 속도 우선(**PyMuPDF4LLM**) 또는 품질 우선(**marker-pdf**) 엔진 선택 가능.
 - **PowerPoint**: **python-pptx**로 구조화 마크다운(Type, Layout, Title, Subtitle, Content) 추출. 표·리스트·코드블록·시각적 순서 지원. 선택적으로 **Unstructured** 엔진, **LLM 보정**, **멀티모달(슬라이드 이미지 → GPT-4o 비전)** 지원.
+- **Video (강의)**: **Whisper**(STT) + **OpenCV**(장면 전환 감지) + **멀티모달 LLM**(Claude / GPT-4o)으로 강의 영상을 목차·섹션 요약·스크린샷·전체 스크립트가 포함된 마크다운 노트로 변환.
 
 ## 가장 빠르게 쓰기
 
@@ -57,6 +58,7 @@ pytest tests/test_pptx.py -v
 - **PPT 멀티모달(비전)**: `python -m pip install "thomas-utils[pptx-multimodal]"` (Windows: pywin32 + PowerPoint, 그 외: LibreOffice + pymupdf)
 - **PPT Unstructured 엔진**: `python -m pip install "thomas-utils[unstructured]"`
 - **PPT 수식(OMML→LaTeX)**: `python -m pip install "thomas-utils[pptx-math]"`
+- **Video → Markdown**: `python -m pip install "thomas-utils[video-summary]"` (시스템에 `ffmpeg` 바이너리 필요)
 
 ## CLI 사용법
 
@@ -108,6 +110,39 @@ thomas-utils pptx2md presentation.pptx --engine unstructured
 
 **참고**: PowerPoint 변환 시 마크다운만 생성되며, 이미지(PNG)는 추출하지 않습니다. 출력 파일은 항상 `output/` 폴더에 저장됩니다.
 
+### Video 변환 (강의 영상 → 마크다운 노트)
+
+```bash
+# 메인 CLI를 통해
+thomas-utils video2md INPUT.mp4 [-o OUTPUT.md] [--provider anthropic|openai] [--whisper-model base] ...
+
+# 또는 전용 모듈로 직접
+python -m thomas_utils.video_summary --input INPUT.mp4 --output OUTPUT.md
+```
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--input`, `-i` | 변환할 영상 경로 | (필수) |
+| `--output`, `-o` | 출력 Markdown 경로 | `output/INPUT.md` |
+| `--provider` | `anthropic`(Claude) 또는 `openai`(GPT-4o) | `anthropic` |
+| `--model` | 모델 이름 강제 지정 | provider 기본값 |
+| `--whisper-model` | `tiny` / `base` / `small` / `medium` / `large-v3` | `base` |
+| `--language` | STT 언어 코드 (예: `ko`, `en`) | 자동 감지 |
+| `--scene-threshold` | 장면 전환 민감도(0–1, 클수록 적게 감지) | `0.55` |
+| `--min-gap-seconds` | 인접 장면 사이 최소 간격(초) | `8.0` |
+| `--max-scenes` | 최대 섹션 수(긴 영상의 API 비용 상한) | `40` |
+| `--api-timeout` | LLM 한 번 호출당 타임아웃(초) | `120` |
+| `--audio-timeout` | ffmpeg 음성 추출 타임아웃(초) | `1800` |
+| `--screenshots-dir` | 키프레임 이미지 저장 디렉터리 | `<OUTPUT>_assets/` |
+| `--title` | 출력 강의 제목 강제 지정 | 영상 파일명 |
+
+**필수 환경**:
+- 시스템에 `ffmpeg` 바이너리가 PATH에 설치되어 있어야 합니다 (`apt install ffmpeg` / `brew install ffmpeg`).
+- `.env`에 `ANTHROPIC_API_KEY`(Claude 사용 시) 또는 `OPENAI_API_KEY`(GPT-4o 사용 시)가 필요합니다.
+- `pip install "thomas-utils[video-summary]"`로 `opencv-python`, `faster-whisper`, `anthropic` 등이 설치됩니다.
+
+**출력 구조**: 강의 제목·메타정보 → **목차**(타임스탬프 점프) → 섹션별(스크린샷 + 핵심 포인트 + 요약 + 해당 구간 스크립트) → **전체 스크립트**(타임스탬프 포함). 키프레임 이미지는 `<OUTPUT>_assets/` 폴더에 저장되고 마크다운에서 상대 경로로 참조됩니다.
+
 **출력 형식**: 각 슬라이드는 `## Slide N`, **Type** (Title Slide / Content Slide / Section Divider), **Layout**, **Title**, **Subtitle**, `### Content`(표·리스트·코드블록) 구조로 출력됩니다.
 
 **멀티모달 LLM** (`--pptx-use-llm-multimodal`): 각 슬라이드를 이미지로 만든 뒤 GPT-4o 비전 API로 마크다운을 생성합니다.  
@@ -158,6 +193,25 @@ md = convert_pptx("presentation.pptx")
 # 멀티모달(비전): convert_pptx("presentation.pptx", use_llm_multimodal=True)
 # Unstructured 엔진: convert_pptx("presentation.pptx", engine="unstructured")
 ```
+
+### Video 변환
+
+```python
+from thomas_utils.video_summary import convert_video
+
+out_path = convert_video(
+    video_path="lecture.mp4",
+    output_path="output/lecture.md",
+    provider="anthropic",          # 또는 "openai"
+    whisper_model="base",
+    scene_threshold=0.55,
+    max_scenes=40,
+)
+```
+
+- `convert_video(video_path, output_path, *, provider="anthropic", model=None, whisper_model="base", language=None, scene_threshold=0.55, min_gap_seconds=8.0, max_scenes=40, api_timeout=120, audio_timeout=1800, screenshots_dir=None, title=None) -> Path`
+- 반환값: 실제로 작성된 Markdown 파일의 경로.
+- 키프레임 이미지는 `<OUTPUT>_assets/` 또는 `screenshots_dir`에 저장됩니다.
 
 - `convert_pptx(pptx_path, slides=None, use_llm=False, engine="python-pptx", use_llm_multimodal=False)`  
   - `pptx_path`: PPTX 파일 경로 (`str` 또는 `pathlib.Path`)

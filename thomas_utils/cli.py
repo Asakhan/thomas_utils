@@ -92,10 +92,45 @@ def _pptx2md(args: argparse.Namespace) -> int:
     return 0
 
 
+def _video2md(args: argparse.Namespace) -> int:
+    from thomas_utils.video_summary.processor import VideoSummaryError, convert_video
+
+    video = Path(args.input)
+    if not video.exists():
+        print(f"Error: file not found: {video}", file=sys.stderr)
+        return 1
+
+    out_path = Path(args.output) if args.output else Path("output") / (video.stem + ".md")
+    try:
+        convert_video(
+            video_path=video,
+            output_path=out_path,
+            provider=args.provider,
+            model=args.model,
+            whisper_model=args.whisper_model,
+            language=args.language,
+            scene_threshold=args.scene_threshold,
+            min_gap_seconds=args.min_gap_seconds,
+            max_scenes=args.max_scenes,
+            api_timeout=args.api_timeout,
+            audio_timeout=args.audio_timeout,
+            screenshots_dir=args.screenshots_dir,
+            title=args.title,
+        )
+    except VideoSummaryError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(f"Wrote {out_path}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="thomas-utils",
-        description="PDF and PowerPoint to Markdown — fast (pymupdf) or high-fidelity (marker).",
+        description="PDF / PowerPoint / Video to Markdown.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -141,6 +176,30 @@ def main() -> None:
         help="Render each slide to image and convert via vision LLM (GPT-4o); needs pywin32 (Windows) or LibreOffice + pymupdf",
     )
     pptx2md_p.set_defaults(_run=_pptx2md)
+
+    video2md_p = subparsers.add_parser("video2md", help="Convert lecture video to Markdown notes")
+    video2md_p.add_argument("input", metavar="INPUT.mp4", help="Input video path")
+    video2md_p.add_argument("-o", "--output", metavar="OUTPUT.md",
+                            help="Output Markdown path (default: output/INPUT.md)")
+    video2md_p.add_argument("--provider", choices=("anthropic", "openai"), default="anthropic",
+                            help="Multimodal LLM provider (default: anthropic)")
+    video2md_p.add_argument("--model", help="Override LLM model name")
+    video2md_p.add_argument("--whisper-model", default="base",
+                            help="Whisper model size (default: base)")
+    video2md_p.add_argument("--language", help="STT language code (default: auto)")
+    video2md_p.add_argument("--scene-threshold", type=float, default=0.55,
+                            help="0.0–1.0; higher = fewer cuts (default: 0.55)")
+    video2md_p.add_argument("--min-gap-seconds", type=float, default=8.0,
+                            help="Minimum gap between scenes (default: 8.0)")
+    video2md_p.add_argument("--max-scenes", type=int, default=40,
+                            help="Hard cap on detected scenes (default: 40)")
+    video2md_p.add_argument("--api-timeout", type=int, default=120,
+                            help="Per-LLM-call timeout in seconds (default: 120)")
+    video2md_p.add_argument("--audio-timeout", type=int, default=1800,
+                            help="ffmpeg audio extract timeout in seconds (default: 1800)")
+    video2md_p.add_argument("--screenshots-dir", help="Override directory for keyframe images")
+    video2md_p.add_argument("--title", help="Override the lecture title in the output")
+    video2md_p.set_defaults(_run=_video2md)
 
     args = parser.parse_args()
     run = getattr(args, "_run", None)

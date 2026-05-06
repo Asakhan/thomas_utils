@@ -8,5 +8,12 @@ tabulate>=0.9.0
 # 3단계 LLM 보정 (OpenAI API)
 openai>=2.15.0
 python-dotenv>=1.0.0
+# Video → Markdown (선택: 강의 영상 요약 기능을 쓸 때만 필요)
+# 시스템에 ffmpeg 바이너리가 PATH에 있어야 함 (apt install ffmpeg / brew install ffmpeg)
+# opencv-python>=4.8
+# numpy>=1.24
+# Pillow>=10.0
+# faster-whisper>=1.0
+# anthropic>=0.40
 # 테스트
 pytest>=7.0.0

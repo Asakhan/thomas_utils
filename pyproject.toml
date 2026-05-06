@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thomas-utils"
-version = "0.1.0"
-description = "PDF and PowerPoint to Markdown converter — fast (PyMuPDF4LLM) or high-fidelity (marker-pdf)"
+version = "0.2.0"
+description = "PDF, PowerPoint, and Lecture-Video to Markdown converter (PyMuPDF4LLM / python-pptx / Whisper + OpenCV + multimodal LLM)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -20,6 +20,15 @@ pptx-llm = ["openai>=1.0"]
 pptx-math = ["officemath2latex>=0.1"]
 pptx-multimodal = ["openai>=1.0", "python-dotenv>=1.0", "pywin32>=306; sys_platform=='win32'", "pymupdf>=1.24"]
 unstructured = ["unstructured[pptx]>=0.10"]
+video-summary = [
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "Pillow>=10.0",
+    "faster-whisper>=1.0",
+    "anthropic>=0.40",
+    "openai>=1.0",
+    "python-dotenv>=1.0",
+]
 test = ["pytest>=7", "pymupdf>=1.24"]
 
 [project.scripts]
