@@ -1,10 +1,11 @@
 # thomas_utils
 
-PDF, PowerPoint, 그리고 강의 영상을 내용 손실을 최소화하면서 Markdown으로 변환하는 도구입니다.
+PDF, PowerPoint, 강의 영상을 내용 손실을 최소화하면서 Markdown으로 변환하고, 한국어 문서의 AI 말투를 제거(humanize)하는 도구 모음입니다.
 
 - **PDF**: 속도 우선(**PyMuPDF4LLM**) 또는 품질 우선(**marker-pdf**) 엔진 선택 가능.
 - **PowerPoint**: **python-pptx**로 구조화 마크다운(Type, Layout, Title, Subtitle, Content) 추출. 표·리스트·코드블록·시각적 순서 지원. 선택적으로 **Unstructured** 엔진, **LLM 보정**, **멀티모달(슬라이드 이미지 → GPT-4o 비전)** 지원.
 - **Video (강의)**: **Whisper**(STT) + **OpenCV**(장면 전환 감지) + **멀티모달 LLM**(Claude / GPT-4o)으로 강의 영상을 목차·섹션 요약·스크린샷·전체 스크립트가 포함된 마크다운 노트로 변환.
+- **Humanize KR (AI 말투 제거)**: 한국어 문서에서 번역투·기계적 병렬 구조·과편집된 AI 시그니처를 제거. `source/` 폴더의 .md/.txt 파일을 일괄 윤문해 `output/` 에 저장. 수치·고유명사·직접 인용은 보호 규칙으로 절대 수정하지 않음. ([epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai) 의 분류 체계 v2.0 기반.)
 
 ## 가장 빠르게 쓰기
 
@@ -201,6 +202,96 @@ grep -E 'ANTHROPIC_API_KEY|OPENAI_API_KEY' .env
 - **Windows**: Microsoft PowerPoint 설치 + `pip install pywin32` (또는 `pip install "thomas-utils[pptx-multimodal]"`). PowerPoint 창이 잠깐 보일 수 있습니다. LibreOffice 불필요.  
 - **그 외**: LibreOffice(`soffice`)가 PATH에 있고 `pip install pymupdf` 필요.  
 - `.env`에 `OPENAI_API_KEY` 설정 필요.
+
+### Humanize KR (AI 말투 제거)
+
+`source/` 폴더에 들어 있는 모든 `.md / .txt / .markdown / .mdx` 파일을 일괄 윤문해 `output/` 에 저장합니다.
+
+```bash
+# 사전 준비: source/ 폴더에 .md / .txt 문서를 넣고, .env 에 API 키 설정
+thomas-utils humanize-all
+# 또는
+python -m thomas_utils humanize-all --provider openai
+```
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--source` | 입력 폴더 | `source` |
+| `--output` | 출력 폴더 | `output` |
+| `--provider` | `openai` 또는 `anthropic` | `openai` |
+| `--model` | 모델 강제 지정 | provider 기본값 (gpt-4o / claude-sonnet-4-6) |
+| `--api-timeout` | LLM 호출당 타임아웃(초) | `180` |
+| `--suffix` | 출력 파일 stem 접미사 | `.humanized` |
+| `--halt-change-rate` | 변경율(%)이 이 값 이상이면 원본 유지 | `50.0` |
+| `--warn-change-rate` | 변경율(%)이 이 값 이상이면 경고 | `30.0` |
+
+**출력 구조**
+
+```
+output/
+  <원본>.humanized.md         # 윤문된 본문
+  <원본>.humanized.report.json # AI 티 탐지 + 내용 보존 검증 리포트(파일별)
+  humanize_log.json           # 전체 일괄 처리 요약 로그
+```
+
+**탐지하는 AI 티 (40여 종, 10 카테고리)**
+
+| Cat | 이름 | 예시 |
+|-----|------|------|
+| A | 번역투 | `~에 대해`, `~를 통해`, `~에 있어서`, `가지고 있다`, 이중피동 `~되어진다`, 영어대명사 `그/그녀` 직역 |
+| B | 영문 인용 과다 | `한글(English)` 반복 병기, 문장 속 영어 단어 |
+| C | 구조 패턴 | 기계적 `첫째/둘째/셋째`, 이모지 남발, `이 섹션에서는~다룬다`, 콜론 부제 헤딩, 연결어미 직후 쉼표 |
+| D | AI 시그니처 | `결론적으로`, `시사하는 바가 크다`, `압도적/폭발적/혁신적` |
+| E | 리듬 균일 | 모든 문장 30~50자, 동일 종결어미 반복, 균일한 문단 길이 |
+| F | 수식 과다 | `매우/정말`, 동의어 중복, `-적/-성/-화` 남발 |
+| G | 헤지 과다 | `~할 수 있을 것으로 보인다`, `가능성이 있을 수 있다` |
+| H | 접속사 군집 | 문단 첫머리 `또한/따라서/즉`, `이 점에서/이 관점에서` |
+| I | 형식 명사 과다 | `~한 것이다`, `주목할 점은`, `~할 필요가 있다` |
+| J | 시각 장식 과다 | 산문 속 **볼드** 남발, 따옴표 강조, 엠대시(—) 남발 |
+
+**보호 규칙 (Do-NOT 리스트, 절대 수정 금지)**
+
+- 모든 수치(정수·소수·퍼센트·금액·단위)와 날짜·시각
+- 직접 인용구 (`"..."`, `'...'`, `“...”`, `‘...’`)
+- 코드 블록(```` ``` ````) / 인라인 코드(`` ` ``)
+- URL · 이메일 · 마크다운 이미지/링크 URL
+- 영문 고유명사(대문자 시작 영단어 시퀀스)
+- 인용·각주 표기 `[1]`, `[Smith 2020]`
+
+**4대 원칙**
+
+1. **의미 불변** — 사실·주장·수치·고유명사·직접 인용은 100% 보존
+2. **증거 기반 편집** — 탐지된 AI 패턴 스팬에만 외과적으로 수정
+3. **장르 보존** — 칼럼은 칼럼답게, 보고서는 보고서답게
+4. **과편집 방지** — 변경율 30% 경고, 50% 초과 시 강제 중단(원본 유지)
+
+**설치**
+
+```bash
+pip install -e ".[humanize]"
+```
+
+`.env` 에 `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` 를 설정해야 합니다.
+
+**Python API**
+
+```python
+from thomas_utils.humanize_kr import humanize_file, humanize_text
+
+# 단일 파일
+result = humanize_file(
+    "source/post.md",
+    "output/post.humanized.md",
+    provider="openai",
+    report_path="output/post.report.json",
+)
+print(result.before.grade, "→", result.after.grade,
+      f"(개선 {result.improvement_percent:.1f}%)")
+
+# 문자열 입력
+result = humanize_text("결론적으로, 이를 통해 매우 중요한 변화가 있다.")
+print(result.rewritten_text)
+```
 
 ## 내용 손실 없이 쓰기
 

@@ -127,10 +127,67 @@ def _video2md(args: argparse.Namespace) -> int:
     return 0
 
 
+def _humanize_all(args: argparse.Namespace) -> int:
+    from thomas_utils.humanize_kr.batch import humanize_batch
+    from thomas_utils.humanize_kr.processor import HumanizeError
+
+    source_dir = Path(args.source)
+    output_dir = Path(args.output)
+
+    if not source_dir.exists():
+        print(f"Error: source 폴더가 존재하지 않습니다: {source_dir}", file=sys.stderr)
+        print(f"  → 먼저 `mkdir {source_dir}` 후 .md/.txt 파일을 넣어 주세요.", file=sys.stderr)
+        return 1
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / "humanize_log.json"
+
+    def _progress(idx: int, total: int, path: Path) -> None:
+        print(f"[{idx}/{total}] 윤문 중: {path.relative_to(source_dir)}", flush=True)
+
+    try:
+        results = humanize_batch(
+            source_dir=source_dir,
+            output_dir=output_dir,
+            provider=args.provider,
+            model=args.model,
+            api_timeout=args.api_timeout,
+            suffix=args.suffix,
+            halt_change_rate=args.halt_change_rate,
+            warn_change_rate=args.warn_change_rate,
+            log_path=log_path,
+            on_progress=_progress,
+        )
+    except HumanizeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not results:
+        print(f"처리할 .md/.txt/.markdown/.mdx 파일이 {source_dir} 에 없습니다.")
+        return 1
+
+    ok = sum(1 for r in results if r.success)
+    halted = sum(1 for r in results if r.halted)
+    failed = sum(1 for r in results if not r.success)
+    print()
+    print(f"=== 일괄 윤문 완료 ===")
+    print(f"총 {len(results)}건 / 성공 {ok} / 강제 중단 {halted} / 실패 {failed}")
+    for r in results:
+        status = "OK" if r.success else "FAIL"
+        if r.halted:
+            status = "HALT"
+        print(f"  [{status}] {r.input_path.name} "
+              f"등급 {r.grade_before}→{r.grade_after} "
+              f"(개선 {r.improvement_percent:.1f}%, 변경율 {r.change_rate_percent:.1f}%)"
+              + (f" — {r.error}" if r.error else ""))
+    print(f"\n로그: {log_path}")
+    return 0 if failed == 0 else 1
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="thomas-utils",
-        description="PDF / PowerPoint / Video to Markdown.",
+        description="PDF / PowerPoint / Video to Markdown, plus Korean humanization.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -200,6 +257,29 @@ def main() -> None:
     video2md_p.add_argument("--screenshots-dir", help="Override directory for keyframe images")
     video2md_p.add_argument("--title", help="Override the lecture title in the output")
     video2md_p.set_defaults(_run=_video2md)
+
+    humanize_p = subparsers.add_parser(
+        "humanize-all",
+        help="source/ 폴더의 모든 한국어 문서에서 AI 말투를 제거하고 output/ 에 저장",
+    )
+    humanize_p.add_argument("--source", default="source",
+                            help="입력 폴더 (기본: source)")
+    humanize_p.add_argument("--output", default="output",
+                            help="출력 폴더 (기본: output)")
+    humanize_p.add_argument("--provider", choices=("openai", "anthropic"),
+                            default="openai",
+                            help="윤문 LLM provider (기본: openai)")
+    humanize_p.add_argument("--model",
+                            help="모델 강제 지정 (기본: openai=gpt-4o, anthropic=claude-sonnet-4-6)")
+    humanize_p.add_argument("--api-timeout", type=int, default=180,
+                            help="LLM 호출당 타임아웃(초) (기본: 180)")
+    humanize_p.add_argument("--suffix", default=".humanized",
+                            help="출력 파일 stem 접미사 (기본: .humanized)")
+    humanize_p.add_argument("--halt-change-rate", type=float, default=50.0,
+                            help="이 변경율(%%)을 넘으면 원본 유지 (기본: 50.0)")
+    humanize_p.add_argument("--warn-change-rate", type=float, default=30.0,
+                            help="이 변경율(%%)을 넘으면 경고 (기본: 30.0)")
+    humanize_p.set_defaults(_run=_humanize_all)
 
     args = parser.parse_args()
     run = getattr(args, "_run", None)
