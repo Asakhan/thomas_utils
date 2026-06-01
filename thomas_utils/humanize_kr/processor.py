@@ -161,6 +161,7 @@ def _call_openai(system: str, user: str, model: str, timeout: int) -> str:
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
+        max_tokens=16000,
     )
     return (r.choices[0].message.content or "") if r.choices else ""
 
@@ -224,6 +225,109 @@ def _parse_json_response(raw: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 청크 분할 — 큰 문서를 헤딩/문단 경계로 쪼개 LLM 출력 토큰 한도를 회피
+# ---------------------------------------------------------------------------
+
+_HEADING_LINE_RE = re.compile(r"^#{1,6} ")
+
+
+def _heading_offsets(text: str) -> List[int]:
+    """코드펜스 밖에 있는 헤딩 라인의 시작 오프셋(문자 단위)을 반환."""
+    out: List[int] = []
+    in_fence = False
+    pos = 0
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and _HEADING_LINE_RE.match(line):
+            out.append(pos)
+        pos += len(line)
+    return out
+
+
+def _split_at_headings(text: str) -> List[str]:
+    """헤딩 경계로 본문을 섹션 리스트로 자른다(코드펜스 보존)."""
+    bs = _heading_offsets(text)
+    if not bs or bs[0] != 0:
+        bs = [0] + bs
+    bs = sorted(set(bs))
+    sections: List[str] = []
+    for i, start in enumerate(bs):
+        end = bs[i + 1] if i + 1 < len(bs) else len(text)
+        if start < end:
+            sections.append(text[start:end])
+    return sections
+
+
+def _split_paragraphs_safe(text: str, hard_max: int) -> List[str]:
+    """코드펜스를 깨지 않으며 빈 줄(`\\n\\n`) 단위로 자르는 폴백."""
+    paragraphs: List[str] = []
+    in_fence = False
+    buf: List[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        if line.strip() == "" and not in_fence and buf:
+            paragraphs.append("".join(buf))
+            buf = [line]
+        else:
+            buf.append(line)
+    if buf:
+        paragraphs.append("".join(buf))
+
+    chunks: List[str] = []
+    current = ""
+    for p in paragraphs:
+        if len(p) > hard_max:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(p)
+            continue
+        if not current or len(current) + len(p) <= hard_max:
+            current += p
+        else:
+            chunks.append(current)
+            current = p
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _chunk_markdown(text: str, target: int = 6000, hard_max: int = 8000) -> List[str]:
+    """마크다운을 헤딩 → 문단 순으로 자른다.
+
+    각 청크는 hard_max 자 이내가 되도록 하고, target 자 근처까지 헤딩 섹션을 그리디 결합한다.
+    """
+    if len(text) <= target:
+        return [text]
+
+    sections = _split_at_headings(text)
+
+    expanded: List[str] = []
+    for sec in sections:
+        if len(sec) <= hard_max:
+            expanded.append(sec)
+        else:
+            expanded.extend(_split_paragraphs_safe(sec, hard_max))
+
+    chunks: List[str] = []
+    current = ""
+    for sec in expanded:
+        if not current:
+            current = sec
+        elif len(current) + len(sec) <= target:
+            current += sec
+        else:
+            chunks.append(current)
+            current = sec
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+# ---------------------------------------------------------------------------
 # 변경율 (간이 — 문자 단위 토큰 차이)
 # ---------------------------------------------------------------------------
 
@@ -267,7 +371,11 @@ def humanize_text(
     halt_change_rate: float = 50.0,
     warn_change_rate: float = 30.0,
 ) -> HumanizeResult:
-    """한 문서 본문 문자열을 윤문한다."""
+    """한 문서 본문 문자열을 윤문한다.
+
+    입력이 LLM 출력 토큰 한도를 넘길 만큼 크면 헤딩 경계로 청크 분할 후
+    각 청크를 따로 윤문해 재결합한다.
+    """
     provider = provider.lower().strip()
     if provider not in ("openai", "anthropic"):
         raise HumanizeError(f"Unknown provider: {provider}")
@@ -277,9 +385,23 @@ def humanize_text(
     before = detect(text)
     protected = collect_protected_strings(text)
 
-    user = _user_prompt(text, before, protected)
-    raw = _call_with_retry(provider, model, _SYSTEM_PROMPT, user, api_timeout)
-    rewritten = _parse_json_response(raw)
+    chunks = _chunk_markdown(text)
+    if len(chunks) == 1:
+        user = _user_prompt(text, before, protected)
+        raw = _call_with_retry(provider, model, _SYSTEM_PROMPT, user, api_timeout)
+        rewritten = _parse_json_response(raw)
+    else:
+        rewritten_parts: List[str] = []
+        for i, chunk in enumerate(chunks, 1):
+            chunk_report = detect(chunk)
+            chunk_protected = collect_protected_strings(chunk)
+            user = _user_prompt(chunk, chunk_report, chunk_protected)
+            raw = _call_with_retry(provider, model, _SYSTEM_PROMPT, user, api_timeout)
+            piece = _parse_json_response(raw)
+            if not piece.endswith("\n"):
+                piece += "\n"
+            rewritten_parts.append(piece)
+        rewritten = "".join(rewritten_parts)
 
     ok, missing = verify_preserved(text, rewritten)
     change_rate = _change_rate_pct(text, rewritten)
