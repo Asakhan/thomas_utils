@@ -209,3 +209,7 @@ __marimo__/
 # Project-specific input/output directories
 source/
 output/
+
+# Generated video-to-markdown notes (YYYYMMDD.md + assets)
+20260502.md
+20260502_assets/
