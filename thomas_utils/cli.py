@@ -184,6 +184,58 @@ def _humanize_all(args: argparse.Namespace) -> int:
     return 0 if failed == 0 else 1
 
 
+def _humanize_text(args: argparse.Namespace) -> int:
+    from thomas_utils.humanize_kr.processor import HumanizeError, humanize_text
+
+    # 입력 텍스트: 인자(TEXT) 우선, 없으면 표준입력(파이프/리다이렉트)에서 읽음
+    if args.text:
+        text = args.text
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        print("Error: 윤문할 텍스트를 인자로 주거나 표준입력으로 전달하세요.", file=sys.stderr)
+        print('  예: thomas-utils humanize "윤문할 한국어 문장"', file=sys.stderr)
+        print('      echo "..." | thomas-utils humanize', file=sys.stderr)
+        return 1
+
+    if not text.strip():
+        print("Error: 입력 텍스트가 비어 있습니다.", file=sys.stderr)
+        return 1
+
+    try:
+        r = humanize_text(
+            text,
+            provider=args.provider,
+            model=args.model,
+            api_timeout=args.api_timeout,
+            halt_change_rate=args.halt_change_rate,
+            warn_change_rate=args.warn_change_rate,
+        )
+    except HumanizeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # --quiet: 윤문 결과 본문만 출력 (파이프라인 친화적)
+    if args.quiet:
+        sys.stdout.write(r.rewritten_text)
+        if not r.rewritten_text.endswith("\n"):
+            sys.stdout.write("\n")
+        return 0
+
+    print(r.rewritten_text)
+    print("\n" + "─" * 40, file=sys.stderr)
+    print(
+        f"등급 {r.before.grade}→{r.after.grade} "
+        f"(개선 {r.improvement_percent:.1f}%, 변경율 {r.change_rate_percent:.1f}%)",
+        file=sys.stderr,
+    )
+    if r.halted:
+        print(f"중단: {r.halt_reason} → 원본을 그대로 출력했습니다.", file=sys.stderr)
+    for w in r.warnings:
+        print(f"경고: {w}", file=sys.stderr)
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="thomas-utils",
@@ -280,6 +332,29 @@ def main() -> None:
     humanize_p.add_argument("--warn-change-rate", type=float, default=30.0,
                             help="이 변경율(%%)을 넘으면 경고 (기본: 30.0)")
     humanize_p.set_defaults(_run=_humanize_all)
+
+    humanize_text_p = subparsers.add_parser(
+        "humanize",
+        help="텍스트를 직접 입력받아 즉시 윤문 결과를 출력 (파일 불필요)",
+    )
+    humanize_text_p.add_argument(
+        "text", nargs="?", metavar="TEXT",
+        help="윤문할 한국어 텍스트. 생략하면 표준입력(stdin)에서 읽음",
+    )
+    humanize_text_p.add_argument("--provider", choices=("openai", "anthropic"),
+                                 default="openai",
+                                 help="윤문 LLM provider (기본: openai)")
+    humanize_text_p.add_argument("--model",
+                                 help="모델 강제 지정 (기본: openai=gpt-4o, anthropic=claude-sonnet-4-6)")
+    humanize_text_p.add_argument("--api-timeout", type=int, default=180,
+                                 help="LLM 호출 타임아웃(초) (기본: 180)")
+    humanize_text_p.add_argument("--halt-change-rate", type=float, default=50.0,
+                                 help="이 변경율(%%)을 넘으면 원본 유지 (기본: 50.0)")
+    humanize_text_p.add_argument("--warn-change-rate", type=float, default=30.0,
+                                 help="이 변경율(%%)을 넘으면 경고 (기본: 30.0)")
+    humanize_text_p.add_argument("-q", "--quiet", action="store_true",
+                                 help="윤문 결과 본문만 출력(등급/경고 등 메타 정보 숨김)")
+    humanize_text_p.set_defaults(_run=_humanize_text)
 
     args = parser.parse_args()
     run = getattr(args, "_run", None)

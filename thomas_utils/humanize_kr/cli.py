@@ -36,6 +36,18 @@ def main() -> None:
     p_batch.add_argument("--warn-change-rate", type=float, default=30.0)
     p_batch.set_defaults(_run=_run_all)
 
+    # text (직접 텍스트 입력 → 즉시 윤문 결과 출력)
+    p_text = sub.add_parser("text", help="텍스트를 직접 입력받아 즉시 윤문 (파일 불필요)")
+    p_text.add_argument("text", nargs="?", help="윤문할 텍스트. 생략 시 표준입력에서 읽음")
+    p_text.add_argument("--provider", choices=("openai", "anthropic"), default="openai")
+    p_text.add_argument("--model")
+    p_text.add_argument("--api-timeout", type=int, default=180)
+    p_text.add_argument("--halt-change-rate", type=float, default=50.0)
+    p_text.add_argument("--warn-change-rate", type=float, default=30.0)
+    p_text.add_argument("-q", "--quiet", action="store_true",
+                        help="윤문 결과 본문만 출력")
+    p_text.set_defaults(_run=_run_text)
+
     # 단일 파일
     p_one = sub.add_parser("one", help="단일 파일을 윤문")
     p_one.add_argument("input")
@@ -78,6 +90,50 @@ def _run_all(args: argparse.Namespace) -> int:
     print(f"\n=== 완료: {ok}/{len(results)} 성공 (강제 중단 {halted}건) ===")
     print(f"로그: {log}")
     return 0 if results else 1
+
+
+def _run_text(args: argparse.Namespace) -> int:
+    from thomas_utils.humanize_kr.processor import humanize_text
+
+    if args.text:
+        text = args.text
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        print("오류: 텍스트를 인자로 주거나 표준입력으로 전달하세요.", file=sys.stderr)
+        return 1
+    if not text.strip():
+        print("오류: 입력 텍스트가 비어 있습니다.", file=sys.stderr)
+        return 1
+
+    try:
+        r = humanize_text(
+            text,
+            provider=args.provider,
+            model=args.model,
+            api_timeout=args.api_timeout,
+            halt_change_rate=args.halt_change_rate,
+            warn_change_rate=args.warn_change_rate,
+        )
+    except HumanizeError as e:
+        print(f"오류: {e}", file=sys.stderr)
+        return 1
+
+    if args.quiet:
+        sys.stdout.write(r.rewritten_text)
+        if not r.rewritten_text.endswith("\n"):
+            sys.stdout.write("\n")
+        return 0
+
+    print(r.rewritten_text)
+    print(f"\n[등급 {r.before.grade}→{r.after.grade} "
+          f"개선 {r.improvement_percent:.1f}%, 변경율 {r.change_rate_percent:.1f}%]",
+          file=sys.stderr)
+    if r.halted:
+        print(f"중단: {r.halt_reason} → 원본을 그대로 출력했습니다.", file=sys.stderr)
+    for w in r.warnings:
+        print(f"경고: {w}", file=sys.stderr)
+    return 0
 
 
 def _run_one(args: argparse.Namespace) -> int:

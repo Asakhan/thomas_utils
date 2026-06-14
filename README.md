@@ -234,6 +234,33 @@ output/
   humanize_log.json           # 전체 일괄 처리 요약 로그
 ```
 
+#### 텍스트 직접 윤문 (파일 없이)
+
+파일을 거치지 않고 텍스트를 바로 넣어 윤문 결과를 즉시 출력합니다.
+
+```bash
+# 인자로 직접 전달
+thomas-utils humanize "데이터를 통해 분석한 결과, 결론적으로 매우 중요하다."
+
+# 표준입력(파이프/리다이렉트)으로 전달
+echo "이를 통해 시사하는 바가 크다." | thomas-utils humanize
+
+# 결과 본문만 출력(등급/경고 등 메타 정보 숨김) — 다른 명령에 파이프할 때
+thomas-utils humanize -q "원문..." > result.md
+```
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `TEXT` | 윤문할 텍스트(생략 시 표준입력에서 읽음) | - |
+| `--provider` | `openai` 또는 `anthropic` | `openai` |
+| `--model` | 모델 강제 지정 | provider 기본값 |
+| `--api-timeout` | LLM 호출 타임아웃(초) | `180` |
+| `--halt-change-rate` | 변경율(%)이 이 값 이상이면 원본 유지 | `50.0` |
+| `--warn-change-rate` | 변경율(%)이 이 값 이상이면 경고 | `30.0` |
+| `-q`, `--quiet` | 윤문 결과 본문만 출력 | 꺼짐 |
+
+윤문된 본문은 표준출력(stdout)에, 등급·변경율·경고 등 메타 정보는 표준에러(stderr)에 출력됩니다(`-q` 시 메타 정보 생략). `python -m thomas_utils.humanize_kr text "..."` 로도 동일하게 실행할 수 있습니다.
+
 **탐지하는 AI 티 (40여 종, 10 카테고리)**
 
 | Cat | 이름 | 예시 |
